@@ -100,7 +100,7 @@ find_asn_files(Path) ->
     [filename:join(Path, F) || F <- filelib:wildcard("**/*.asn1", Path)].
 
 generate_asn(State, Path, AsnFile) ->
-    rebar_api:info("~w", [AsnFile]),
+    rebar_api:info("~s", [AsnFile]),
     Args = get_args(State),
     verbose_out(State, "Args: ~p", [Args]),
     Encoding = proplists:get_value(encoding, Args),
