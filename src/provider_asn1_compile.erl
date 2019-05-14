@@ -87,6 +87,7 @@ process_app(State, AppPath) ->
             move_files(State, GenPath, SrcPath, "*.asn1db"),
 
             verbose_out(State, "HEADER files: ~p", [filelib:wildcard("*.hrl", GenPath)]),
+            post_process_hrls(filelib:wildcard(filename:join(GenPath, "*.hrl"))),
             move_files(State, GenPath, IncludePath, "*.hrl"),
 
             ok
@@ -110,6 +111,36 @@ generate_asn(State, Path, AsnFile) ->
         end ++ proplists:get_value(compile_opts, Args),
     verbose_out(State, "Beginning compile with opts: ~p", [CompileArgs]),
     asn1ct:compile(AsnFile, CompileArgs).
+
+post_process_hrls(Files) ->
+    lists:map(fun post_proc_hrl/1, Files).
+
+post_proc_hrl(File) ->
+    %% can't use the normal parser because preprocessing
+    {ok, Trees} = epp_dodger:parse_file(File),
+    Forms = lists:foldl(fun post_proc_tree/2, [], Trees),
+    %% write new version of file
+    {ok, FD} = file:open(File, [write]),
+    [io:fwrite(FD, "~s~n", [Form]) || Form <- Forms],
+    file:close(FD).
+
+%% if the abstract syntax tree matches our pattern, we wrap it in an ifdef
+post_proc_tree(Tree, Forms) ->
+    %% the pattern wwe're looking for. we want to wrap this in an ifdef
+    Pat = erl_syntax:attribute(merl:quote("record"),
+                               [merl:quote("'EXTERNAL'"),
+                                merl:quote("_@_")]),
+    Pretty = erl_prettypr:format(Tree),
+    case merl:match(Pat, Tree) of
+        {ok, _} ->
+            Forms++
+                ["-ifndef(_EXTERNAL_HRL_).",
+                 "-define(_EXTERNAL_HRL_, true).",
+                 Pretty,
+                 "-endif."];
+        _ ->
+            Forms++[Pretty]
+    end.
 
 to_recompile(ASNPath, GenPath) ->
     case find_asn_files(ASNPath) of
